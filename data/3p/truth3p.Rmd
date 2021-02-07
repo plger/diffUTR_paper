@@ -1,0 +1,58 @@
+---
+title: "3p-seq truth"
+author: "Pierre-Luc Germain"
+output: html_document
+---
+
+
+```{r}
+suppressPackageStartupMessages({
+  library(DEXSeq)
+  library(SummarizedExperiment)
+})
+```
+
+
+```{r}
+download.file("ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE84nnn/GSE84643/suppl/GSE84643_3READS_count_table.txt.gz","GSE84503.txt.gz")
+
+e <- read.delim("GSE84503.txt.gz", header=TRUE)
+se <- SummarizedExperiment( list(counts=e[,grep("^num_",colnames(e))]), 
+                            rowData=data.frame(gene=e$gene_symbol) )
+se$condition <- rep(c("CTRL","LTP"), each=6)
+se$time <- rep(rep(c("1h","3h"), each=3),2)
+rowData(se)$tx_name <- rowData(se)$gene_id <- rowData(se)$gene
+se <- se[rowSums(assay(se)>=50)>1,]
+```
+
+```{r}
+getGeneRes <- function(dds){
+  dds2 <- as.data.frame(dds)
+  dds2 <- dds2[order(dds2$padj),]
+  dds2 <- dds2[!duplicated(dds2$groupID),c("groupID","exonBaseMean","pvalue","padj","CTRL","LTP","log2fold_LTP_CTRL")]
+  dds2$gene.q <- perGeneQValue(dds)[as.character(dds2$groupID)]
+  dds2$gene.tot <- rowsum(dds$exonBaseMean,dds$groupID)[as.character(dds2$groupID),1]
+  dds2$ratio <- dds2$exonBaseMean/dds2$gene.tot
+  dds2 <- dds2[!is.na(dds2$gene.q),]
+  dds2[order(dds2$gene.q),]
+}
+
+binarize <- function(res, sig.p=0.1, ns.p=0.8, minV=10, minLFC=0){
+  if(is(res,"DEXSeqResults")) res <- getGeneRes(res)
+  res <- res[( ((res$gene.q <= sig.p | res$padj <= ns.p) & abs(res$log2fold_LTP_CTRL)>minLFC) |
+                 res$gene.q >= ns.p ) & 
+               (res$CTRL > minV | res$LTP > minV),]
+  y <- setNames(res$gene.q < sig.p, res$groupID)
+  y
+}
+
+dds1 <- DEXSeq(DEXSeqDataSetFromSE(se[,se$time=="1h"]))
+res1 <- binarize(dds1)
+
+dds3 <- DEXSeq(DEXSeqDataSetFromSE(se[,se$time=="3h" & colnames(se)!="num_A6"]))
+res3 <- binarize(dds3)
+
+saveRDS(res1, "truth.1h.rds")
+saveRDS(res3, "truth.3h.rds")
+```
+
