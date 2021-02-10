@@ -1,0 +1,349 @@
+---
+title: "figures"
+author: "Pierre-Luc Germain"
+date: "1/27/2021"
+output: html_document
+---
+
+
+
+```{r}
+suppressPackageStartupMessages({
+  library(GenomicRanges)
+  library(ggplot2)
+  library(cowplot)
+  library(diffUTR)
+  library(ComplexHeatmap)
+})
+theme_set(theme_cowplot(font_size = 12, rel_large=15/14))
+```
+
+```{r}
+prplot <- function(d, truth, ..., pointSize=2, vlines=c(0.05), do.FPR=FALSE, th.points=c(0.1,0.05,0.01)){
+  if(is.data.frame(d) && "truth" %in% colnames(d)) d$truth <- NULL
+  d2 <- lapply(as.list(d), FUN=function(x){
+    x[is.na(x)] <- 1
+    o <- order(x)
+    x <- x[o]
+    t2 <- truth[o]
+    d <- data.frame( Rank=seq_along(t2),
+                     TPR=cumsum(t2)/sum(t2),
+                     FPR=cumsum(!t2)/sum(!t2),
+                     FDR=cumsum(!t2)/seq_along(t2) )
+    w <- rev(seq_len(nrow(d)))
+    w <- w[which(!duplicated(x[w]))]
+    r0 <- data.frame(Rank=0, TPR=0, FPR=0, FDR=0)
+    rbind(r0, d[rev(w),])
+  })
+  d2 <- dplyr::bind_rows(d2, .id="method")
+  if(do.FPR){
+    p <- ggplot(d2, aes(FPR, TPR, colour=method)) + 
+      geom_abline(slope=1, linetype="dashed", col="lightgrey") + geom_path(...)
+  }else{
+    p <- ggplot(d2, aes(FDR, TPR, colour=method)) + 
+      geom_vline(xintercept=vlines, linetype="dashed", colour="grey") + geom_path(...)
+  }
+  if(length(w <- which(sapply(d,FUN=function(x) all(x>=0 & x<=1, na.rm=TRUE))))>0){
+    d3 <- lapply(as.list(d[,w,drop=FALSE]), FUN=function(x){
+      x[is.na(x)] <- 1
+      o <- order(x)
+      x <- x[o]
+      t2 <- truth[o]
+      i <- unlist(lapply(th.points, FUN=function(i){
+        w <- which(x<=i)
+        if(length(w)>1) w <- max(w, na.rm=TRUE)
+        w
+      }))
+      i <- i[!sapply(i,is.null)]
+      if(length(i)==0)
+        return(data.frame(Rank=0, TPR=0, FPR=0, FDR=0))
+      data.frame( Rank=seq_along(t2),
+                  TPR=cumsum(t2)/sum(t2),
+                  FPR=cumsum(!t2)/sum(!t2),
+                  FDR=cumsum(!t2)/seq_along(t2) )[i,,drop=FALSE]
+    })
+    d3 <- dplyr::bind_rows(d3, .id="method")
+    p <- p + geom_point(data=d3, size=pointSize)
+  }
+  p
+}
+
+qapa_post <- function(qapa, do.log=TRUE){
+  pau<-qapa[,13:18]
+  pauA<-rowMeans(pau[,1:3])
+  pauB<-rowMeans(pau[,4:6])
+  deltaPau<- data.frame(dpau=-abs(pauA-pauB), gene=qapa$Gene)
+  deltaPau$p.value <- apply(pau,1,FUN=function(x){
+    if(do.log) x <- log1p(x)
+    tryCatch(t.test(x[1:3],x[4:6])$p.value, error=function(e) 1)
+  })
+
+  ag <- aggregate(deltaPau[,"dpau",drop=FALSE], deltaPau[,"gene",drop=FALSE], FUN = function(x) {
+    if (all(is.na(x))) return(1)
+    return(min(x, na.rm = TRUE))
+  })
+
+  row.names(ag) <- ag$gene
+  ag$pval <- simes.aggregation(deltaPau$p.value, deltaPau$gene)[row.names(ag)]
+  ag[,-1]
+}
+
+dapars_post <- function(daparsres){
+  if(is.character(daparsres)) daparsres <- read.delim(daparsres)
+  
+  split<-strsplit(as.character(daparsres$Gene),"|",fixed=TRUE)
+  gID<-sapply( split, '[[', 2 )
+  p.val<-daparsres$P_val
+  
+    o <- order(gID,seq(1:length(gID)))
+  geneid <- gID[o]
+  da.p.value <- p.val[o]
+  ngenes<-length(unique(geneid))
+  ones <- rep(1,length(geneid))
+  gene.nexons <- rowsum(ones,geneid,reorder=FALSE)
+  g <- rep(1:ngenes,times=gene.nexons)
+  
+  single<-(gene.nexons<=1)
+  f<-single[g]
+  
+  single.p<-da.p.value[f]
+  single.gid<-geneid[f]
+  
+  geneid<-geneid[!f]
+  da.p.value<-da.p.value[!f]
+  
+  daparsar <- simes.aggregation(da.p.value,geneid)
+  
+  names(single.p)<-single.gid
+  
+  daparsar<-c(daparsar, single.p)
+  
+  data.frame(row.names=substr(names(daparsar),1,18), p=daparsar)
+}
+
+
+apalyzer_post <- function(res, res2=NULL){
+  if(is.character(res)) res <- readRDS(res)
+  res <- res[res$gene_symbol %in% names(sym2ens),]
+  res <- setNames(res$p_adj, substr(sym2ens[res$gene_symbol],1,18))
+  res[is.na(res)] <- 1
+  if(is.null(res2)) return(res)
+  res2 <- apalyzer_post(res2)
+  g <- union(names(res),names(res2))
+  setNames(rowMins(cbind(res[g], res2[g]), na.rm=TRUE), g)
+}
+
+get_results_table <- function(resobjects, truth, padj=TRUE){
+  if(is.character(resobjects[[1]])) resobjects <- lapply(resobjects, readRDS)
+  if(is.character(truth) && length(truth)==1) truth <- readRDS(truth)
+  res <- lapply(resobjects, FUN=function(x){
+    if(is(x,"SummarizedExperiment")) x <- metadata(x)$gene.p.value
+    names(x) <- substr(names(x),1,18)
+    x
+  })
+  if(is.character(truth)){
+    g <- unique(unlist(lapply(res, FUN=names)))
+    truth <- setNames(g %in% truth, g)
+  }
+  if(padj){
+    res <- as.data.frame(sapply(res, FUN=function(x) x[names(truth)]), row.names=names(truth))
+  }else{
+    res <- as.data.frame(sapply(res, FUN=function(x) p.adjust(x[names(truth)])), row.names=names(truth))
+  }
+  res$truth <- truth[row.names(res)]
+  res
+}
+
+cols <- c(diffSplice2 = "#332288", diffSplice = "#88CCEE", DEXSeq = "#117733", APAlyzer="darkgrey", APAlyzer2="darkgrey",
+edgeR = "#DDCC77", DaPars = "orange", QAPA = "#AA4499", QAPA.dPau="#AA4499", QAPA.pval="#CC6677")
+ltypes <- c(diffSplice2 = 1, diffSplice = 3, DEXSeq = 1, edgeR = 3, DaPars = 2, 
+            QAPA = 2, QAPA.dPau=3, QAPA.pval=2, APAlyzer=1, APAlyzer2=2)
+
+```
+
+```{r}
+g <- rtracklayer::import("../data/large/gencode.vM25.annotation.gtf")
+g <- g[g$type=="gene"]
+g <- g[!duplicated(g$gene_name)]
+sym2ens <- setNames(g$gene_id, g$gene_name)
+```
+
+# DEU Simulation
+
+```{r}
+load("../data/CharlotteDTUsim.RData", verbose=TRUE)
+truth <- setNames(as.logical(truth$ds_status), as.character(truth$gene))
+
+result_path="../results/DEU"
+
+resobjects <- list(
+  diffSplice=file.path(result_path,"limmares.rds"),
+  diffSplice2=file.path(result_path,"limma3res.rds"),
+  DEXSeq=file.path(result_path,"dexres.rds"),
+  edgeR=file.path(result_path,"edgerres.rds")
+)
+
+res <- get_results_table(resobjects, truth, padj=TRUE)
+
+p1 <- prplot(res, res$truth, pointSize = 3, size=1.2, alpha=0.8, aes(linetype=method)) + 
+  scale_colour_manual(values=cols)  + scale_linetype_manual(values=ltypes)
+
+ggsave("deu.PR.pdf", plot=p1, width = 15, height = 10, units = "cm")
+
+```
+
+
+# UTR Simulation
+
+```{r}
+result_path="../results/simulation"
+truth_path = "../data/simulation"
+
+resobjects <- list(
+  diffSplice=file.path(result_path,"limmares.rds"),
+  diffSplice2=file.path(result_path,"limma3res.rds"),
+  DEXSeq=file.path(result_path,"dexres.rds"),
+  edgeR=file.path(result_path,"edgerres.rds")
+)
+
+truth <- readRDS(file.path(truth_path,"difftranscripts.rds"))$gene_id
+
+dapars <- dapars_post(read.delim(file.path(result_path,"dapars.txt")))
+qapa <- qapa_post(read.delim(file.path(result_path,"qapa.txt")))
+apalyzer <- apalyzer_post(readRDS(file.path(result_path,"APAlyzer.rds")))
+apalyzer2 <- apalyzer_post(readRDS(file.path(result_path,"APAlyzer.rds")),
+                          readRDS(file.path(result_path,"APAlyzer.IPA.rds")))
+
+resobjects <- lapply(resobjects, readRDS)
+res <- get_results_table(resobjects, truth)
+
+res$DaPars <- dapars[row.names(res),1]
+res$QAPA.dPau <- qapa[row.names(res),"dpau"]
+res$QAPA.pval <- qapa[row.names(res),"pval"]
+res$APAlyzer <- apalyzer[row.names(res)]
+res$APAlyzer2 <- apalyzer2[row.names(res)]
+
+m <- as.matrix(res[,setdiff(colnames(res),c("QAPA.dpau","truth"))])
+res2 <- res[rowSums(is.na(m))==0 & rowSums(m<1),]
+
+p2 <- prplot(res2, res2$truth, pointSize = 3, size=1.2, alpha=0.8, aes(linetype=method)) + 
+  scale_colour_manual(values=cols) + scale_linetype_manual(values=ltypes) + 
+  guides(colour=guide_legend(override.aes = list(size = 1.6, shape = NA))) + 
+  theme(legend.key.width = unit(1,"cm"))
+
+p2
+```
+
+```{r, fig.width=10, fig.height=4.5}
+p <- plot_grid( p1 + ggtitle("Differential exon usage") + theme(legend.position = "none"), 
+           p2 + ggtitle("Differential UTR usage"), labels="AUTO", rel_widths=c(2,3), scale=0.95)
+ggsave("figure1.pdf", plot=p, width = 22, height = 10, units = "cm")
+p
+```
+
+# 3p seq
+
+```{r, fig.width=9, fig.height=4}
+result_path="../results/LTP/"
+
+resobjects <- list(
+  diffSplice=file.path(result_path,"limmares.rds"),
+  diffSplice2=file.path(result_path,"limma3res.rds"),
+  DEXSeq=file.path(result_path,"dexres.rds"),
+  edgeR=file.path(result_path,"edgerres.rds")
+)
+resobjects <- lapply(resobjects, readRDS)
+
+truth <- readRDS("../data/3p/truth.3h.rds")
+truth <- truth[names(truth) %in% names(sym2ens)]
+names(truth) <- sym2ens[names(truth)]
+names(truth) <- substr(names(truth),1,18)
+res <- get_results_table(resobjects, truth)
+
+dapars <- dapars_post(read.delim(file.path(result_path,"dapars.txt")))
+res$DaPars <- dapars[row.names(res),1]
+
+qapa <- qapa_post(read.delim(file.path(result_path,"qapa.txt")))
+res$QAPA.dPau <- qapa[row.names(res),"dpau"]
+res$QAPA.pval <- qapa[row.names(res),"pval"]
+
+apalyzer <- apalyzer_post(readRDS(file.path(result_path,"APAlyzer.rds")))
+apalyzer2 <- apalyzer_post(readRDS(file.path(result_path,"APAlyzer.rds")),
+                          readRDS(file.path(result_path,"APAlyzer.IPA.rds")))
+res$APAlyzer <- apalyzer[row.names(res)]
+res$APAlyzer2 <- apalyzer2[row.names(res)]
+
+m <- as.matrix(res[,setdiff(colnames(res),c("QAPA.dpau","truth"))])
+res <- res[rowSums(is.na(m))==0 & rowSums(m<1),]
+
+p3.all <- prplot(res, res$truth, do.FPR=TRUE, size=1.2, pointSize = 3, aes(linetype=method)) + scale_x_sqrt() + scale_y_sqrt() + scale_colour_manual(values=cols) + scale_linetype_manual(values=ltypes) + 
+  guides(colour=guide_legend(override.aes = list(size = 1.6, shape = NA))) + 
+  theme(legend.key.width = unit(1,"cm"))
+
+pdf("3seq_all.pdf", width=6, height=5)
+p3.all
+dev.off()
+
+res2 <- res[,setdiff(colnames(res), c("diffSplice","edgeR","QAPA.dPau","APAlyzer2"))]
+p3 <- prplot(res2, res$truth, do.FPR=TRUE, size=1.2, pointSize = 3, aes(linetype=method)) + scale_x_sqrt() + scale_y_sqrt() + scale_colour_manual(values=cols) + scale_linetype_manual(values=ltypes) + 
+  guides(colour=guide_legend(override.aes = list(size = 1.6, shape = NA))) + 
+  theme(legend.key.width = unit(1,"cm"))
+
+pp <- plot_grid(NULL, p3, labels="AUTO", rel_widths=c(2,3))
+
+pdf("3seq.pdf", width=10, height=4)
+pp
+dev.off()
+```
+
+
+# Neuronal differentiation
+
+```{r}
+result_path <- "../results/neuronal"
+
+se <- readRDS(file.path(result_path,"limma3res.rds"))
+se <- addNormalizedAssays(se)
+se<-se[rowData(se)$type %in% c("CDS/3UTR","3UTR","CDS/UTR/3UTR","UTR/3UTR") &
+         !is.na(rowData(se)$exon.p.value),]
+gl0 <- metadata(se)$gene.p.value
+siggenes <- names(gl0)[p.adjust(gl0)<0.1]
+
+w <- which(rowData(se)$gene %in% siggenes & p.adjust(rowData(se)$exon.p.value)<0.1)
+lfc <- rowData(se)$coefficients[w]
+logcpm <- rowMeans(assays(se)$logcpm[w,])
+pdf("lengthening.pdf", width=6, height=4)
+LSD::heatscatter(d$coefficients[w], d$meanLogCPM[w],
+                 xlab="Bin log2(foldchange)", ylab="Bin mean log(CPM)", 
+                 main="",xlim=c(-7.5,7.5),bty="n")
+dev.off()
+png("lengthening.png", width=6, height=4, unit="in", res=200)
+LSD::heatscatter(d$coefficients[w], d$meanLogCPM[w],
+                 xlab="Bin log2(foldchange)", ylab="Bin mean log(CPM)", 
+                 main="",xlim=c(-7.5,7.5),bty="n")
+dev.off()
+
+```
+
+# Example plots
+
+```{r, fig.width=6, fig.height=11}
+dh <- function(g){
+  draw(geneBinHeatmap(se1, g, what="scaledLogCPM", column_title="Scaled logCPM", merge_legends = FALSE) + geneBinHeatmap(se1, g, merge_legends = FALSE, anno_rows = c(), column_title="logcpm"), merge_legends=TRUE)
+}
+
+se1 <- readRDS("../data/large/LTP/limma3res.rds")
+metadata(se1)$anno_colors <- list(condition=c("CTRL"="darkgrey","LTP"="darkred"))
+
+b1 <- plotTopGenes(head(metadata(se1)$geneLevel, 1000))
+
+b2 <- deuBinPlot(se1, "Jund", type="condition", colour="condition", size="type",y="logcpm") +
+  guides(colour = guide_legend(override.aes = list(size = 3)))
+
+b3 <- grid.grabExpr(dh("Smg6"))
+
+pdf("examples.pdf", width=6, height=11)
+plot_grid(b1,b2,b3, labels="AUTO", nrow=3, rel_heights = c(2.8,1.5,4))
+dev.off()
+```
+
