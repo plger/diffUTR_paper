@@ -14,6 +14,7 @@ suppressPackageStartupMessages({
   library(cowplot)
   library(diffUTR)
   library(ComplexHeatmap)
+  library(matrixStats)
 })
 theme_set(theme_cowplot(font_size = 12, rel_large=15/14))
 ```
@@ -155,9 +156,10 @@ get_results_table <- function(resobjects, truth, padj=TRUE){
 }
 
 cols <- c(diffSplice2 = "#332288", diffSplice = "#88CCEE", DEXSeq = "#117733", APAlyzer="darkgrey", APAlyzer2="darkgrey",
-edgeR = "#DDCC77", DaPars = "orange", QAPA = "#AA4499", QAPA.dPau="#AA4499", QAPA.pval="#CC6677")
+edgeR = "#DDCC77", DaPars = "orange", QAPA = "#AA4499", QAPA.dPau="#AA4499", QAPA.pval="#CC6677",
+"CSI-UTR (DEXSeq)"="red")
 ltypes <- c(diffSplice2 = 1, diffSplice = 3, DEXSeq = 1, edgeR = 3, DaPars = 2, 
-            QAPA = 2, QAPA.dPau=3, QAPA.pval=2, APAlyzer=1, APAlyzer2=2)
+            QAPA = 2, QAPA.dPau=3, QAPA.pval=2, APAlyzer=1, APAlyzer2=2, "CSI-UTR (DEXSeq)"=1)
 
 ```
 
@@ -223,6 +225,10 @@ res$QAPA.pval <- qapa[row.names(res),"pval"]
 res$APAlyzer <- apalyzer[row.names(res)]
 res$APAlyzer2 <- apalyzer2[row.names(res)]
 
+csi <- read.delim("../results/simulation/CSIUTR_DEXSeq.txt", header=TRUE, row.names=1)
+csi2 <- simes.aggregation(csi$pvalue, csi$groupID)
+res[["CSI-UTR (DEXSeq)"]] <- csi2[row.names(res)]
+
 m <- as.matrix(res[,setdiff(colnames(res),c("QAPA.dpau","truth"))])
 res2 <- res[rowSums(is.na(m))==0 & rowSums(m<1),]
 
@@ -272,6 +278,11 @@ apalyzer2 <- apalyzer_post(readRDS(file.path(result_path,"APAlyzer.rds")),
                           readRDS(file.path(result_path,"APAlyzer.IPA.rds")))
 res$APAlyzer <- apalyzer[row.names(res)]
 res$APAlyzer2 <- apalyzer2[row.names(res)]
+
+csi <- read.delim(file.path(result_path, "CSIUTR_DEXSeq.txt"), header=TRUE, row.names=1)
+csi2 <- simes.aggregation(csi$pvalue, csi$groupID)
+res[["CSI-UTR (DEXSeq)"]] <- csi2[row.names(res)]
+
 
 m <- as.matrix(res[,setdiff(colnames(res),c("QAPA.dpau","truth"))])
 res <- res[rowSums(is.na(m))==0 & rowSums(m<1),]
