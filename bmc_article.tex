@@ -267,7 +267,7 @@ We present the \textit{diffUTR} Bioconductor package which streamlines and impro
 %%
 \section*{Background}
 
-Coding sequences in eukaryotic mRNAs are generally flanked by transcribed but untranslated regions (UTRs) which can impact RNA stability, translation, and localization \cite{Lewis1995TheMetabolism}. In particular, the length of 3' UTRs often varies even within a given gene due to the use of different poly-adenylation (polyA) sites \cite{Tian2016AlternativePrecursors}, leading especially to the inclusion or not of regulatory elements such as binding sites for microRNAs (miRNAs) or RNA-binding proteins \cite{Fabian2010RegulationMicroRNAs}. Alternative poly-adenylation (APA) is highly prevalent in mammals \cite{Derti2012AMammals} and has been shown to be important to a variety of biological phenomena \cite{Sandberg2008ProliferatingSites,Mayr2009WidespreadCells,Miura2013WidespreadBrain, Ha2018QAPA:Data}.
+Coding sequences in eukaryotic mRNAs are generally flanked by transcribed but untranslated regions (UTRs) which can impact RNA stability, translation, and localization \cite{Lewis1995TheMetabolism}. In particular, the length of 3' UTRs often varies even within a given gene due to the use of different poly-adenylation (polyA) sites \cite{Tian2016AlternativePrecursors}, leading especially to the inclusion or not of regulatory elements such as binding sites for micro-RNAs or RNA-binding proteins \cite{Fabian2010RegulationMicroRNAs}. Alternative poly-adenylation (APA) is highly prevalent in mammals \cite{Derti2012AMammals} and has been shown to be important to a variety of biological phenomena \cite{Sandberg2008ProliferatingSites,Mayr2009WidespreadCells,Miura2013WidespreadBrain, Ha2018QAPA:Data}.
 
 A number of methods for 3' end sequencing have been developed with the goal to map APA sites \cite{Fox-Walsh2011AFormation,Fu2011DifferentialSequencing,Zheng20163READS+RNA,Jan2011Formation3UTRs,Shepard2011ComplexPAS-Seq,Derti2012AMammals,Hwang2017CTag-PAPERCLIPActivation}, leading to the development of atlases such as \textit{PolyASite} \cite{Herrmann2020PolyASiteSequencing} or \textit{PolyA\_DB} \cite{WangPolyadb2018}. As such methods are only marginally used, however, it would be beneficial to leverage the widespread availability of traditional RNA-seq for the purpose of identifying changes in 3' UTR usage. A chief difficulty here is that most UTR variants are not catalogued in standard transcript annotations, limiting the utility of standard transcript-level quantification based on reference transcripts, such as \textit{salmon} \cite{PatroSalmon2017}. Nevertheless, a number of methods have been developed to this purpose. Methods like \textit{DaPars} \cite{Xia2014DynamicTypes} and \textit{APAtrap} \cite{Ye2018APAtrap:Data} try to infer new polyA sites from read coverage changes from RNA-seq experiments, however the depletion of RNAseq coverage at the 3' end of transcripts makes the precise inference of polyA sites challenging \cite{Wang2009RNA-Seq:Transcriptomics}. Other tools like \textit{CSI-UTR} \cite{HarrisonDetection2019}, \textit{QAPA} \cite{Ha2018QAPA:Data} and \textit{APAlyzer} \cite{Wang2020APAlyzer:Isoforms} use already available polyA site databases but the latter two only compare the usage of the most proximal polyA sites to distal ones in a pairwise fashion and fail to grasp the full complexity of dynamic APA when there are three or more polyA sites, which is the case for approximately half of mammalian transcripts \cite{Derti2012AMammals}. Furthermore, with the exception of \textit{CSI-UTR} \cite{HarrisonDetection2019} which leverages \textit{DEXSeq} \cite{Anders2012DetectingData}, most approaches do not make use of the already proven statistical frameworks to analyse different exon usage (DEU) from count data \cite{Anders2012DetectingData,Robinson2009EdgeR:Data,Law2014Voom:Counts,Ritchie2015LimmaStudies}. These tools take into account the inherent properties of read count distributions and are arguably more appropriate to analyse differences in relative polyA site usage, which is conceptually highly similar to DEU. We therefore developed \textit{diffUTR}, which streamlines and improves upon well established DEU tools, and leverages them, along with polyA site databases, to infer alternative 3' UTR usage across conditions.
 
@@ -328,7 +328,7 @@ During implementation, we tested other changes to the method which were ultimate
 
 First, differential UTR analysis differs from typical differential exon usage analysis in that the vast majority of UTR bins are consecutively transcribed, meaning that changes in the usage of a bin should also be visible in downstream bins. We therefore reasoned that it would be beneficial to use this property to improve statistical analysis. We reasoned that connected bins with significant fold changes in the same direction could be unified and their p-values aggregated, and tested a rudimentary implementation using Fisher's aggregation. However, this decreased accuracy and led to a worse FDR control (Supplementary Figure 2).
 
-Second, most methods compare bin-level foldchanges to gene-level ones to identify bins behaving differently from the others, and we reasoned that, especially for genes with more UTR bins than CDS bins, including counts of 3' UTR when calculating overall gene expression could underestimate the gene expression and possibly mistake the UTR foldchange for the gene foldchange. We therefore tried a modification of \textit{diffSplice} to only calculate the gene foldchange from coding sequence (CDS) bins and then compare it to the individual bins. Again, this approach proved unsuccessful (Supplementary Figure 3).
+Second, most methods compare bin-level foldchanges to gene-level ones to identify bins behaving differently from the others, and we reasoned that, especially for genes with more UTR bins than coding sequence (CDS) bins, including counts of 3' UTR when calculating overall gene expression could underestimate the gene expression and possibly mistake the UTR foldchange for the gene foldchange. We therefore tried a modification of \textit{diffSplice} to only calculate the gene foldchange from CDS bins and then compare it to the individual bins. Again, this approach proved unsuccessful (Supplementary Figure 3).
 
 \section*{Discussion}
 
@@ -345,13 +345,9 @@ While \textit{DEXSeq} remains the tool of predilection for relative bin usage an
 
 \section*{Methods}
 
-\subsection{Data and code availability}
-
-The data objects and code used to produce the figures are available through the \url{https://github.com/plger/diffUTR_paper} repository. The \textit{diffUTR} source code is available at \url{https://github.com/ETHZ-INS/diffUTR}.
-
 \subsection{RNAseq data processing}
 
-For the evaluation of \texttt{diffSplice2} in a standard DEU case, we used bin count data obtained from the authors of the original DEU benchmark \cite{Soneson2016IsoformUsage}. For other datasets, reads were downloaded from the SRA, aligned to the GRCm38.p6 genome using STAR 2.7.3a with default parameters and the GENCODE M25 annotation as guide. The same gene annotation was used as input for bin creation.
+For the evaluation of \texttt{diffSplice2} in a standard DEU case, we used bin count data obtained from the authors of the original DEU benchmark \cite{Soneson2016IsoformUsage}. For other datasets, reads were downloaded from the SRA repository, aligned to the GRCm38.p6 genome using STAR 2.7.3a with default parameters and the GENCODE M25 annotation as guide. The same gene annotation was used as input for bin creation.
 
 \subsection{diffUTR}
 
@@ -360,7 +356,7 @@ For the evaluation of \texttt{diffSplice2} in a standard DEU case, we used bin c
 \subsubsection{Preparing bins}
 \label{sec:bins}
 
-Exons are extracted from the genome annotation and flattened into non-overlapping bins (Figure \ref{fig:scheme}B). In other words, the exon annotation is fragmented into the widest ranges where the set of overlapping features is the same. Bins that do not overlap with coding sequences (CDS) and belong to a protein coding transcript are labeled as UTR and the rest as CDS. When APA sites are also provided as input (for the purpose of this article, polyAsite v2.0 sites were used), bins are further segmented and/or extended. For this the closest upstream CDS or UTR is found for every poly(A) site and the UTR is defined from this boundary to the polyA site and assigned to the corresponding gene and transcript (Figure \ref{fig:scheme}B). If the newly defined UTRs exceeds a predefined length specified by \texttt{maxUTRbinSize} (default is 15000bp), it is ignored as unlikely to be a real UTR. Moreover, if the start of a gene is the closest upstream sequence before any UTR or CDS the newly defined UTR is ignored to avoid assignment problems. In order to later differentiate between regions that are 3' or 5' UTRs, regions that are downstream of the last CDS of a given transcript were labeled as 3' UTR. The label `non-coding' is assigned to all bins that have no protein coding transcript overlapping it.
+Exons are extracted from the genome annotation and flattened into non-overlapping bins (Figure \ref{fig:scheme}B). In other words, the exon annotation is fragmented into the widest ranges where the set of overlapping features is the same. Bins that do not overlap with coding sequences (CDS) and belong to a protein coding transcript are labeled as UTR and the rest as CDS. When APA sites are also provided as input (for the purpose of this article, \textit{polyAsite} v2.0 sites were used), bins are further segmented and/or extended. For this the closest upstream CDS or UTR is found for every poly(A) site and the UTR is defined from this boundary to the polyA site and assigned to the corresponding gene and transcript (Figure \ref{fig:scheme}B). If the newly defined UTRs exceeds a predefined length specified by \texttt{maxUTRbinSize} (default is 15000bp), it is ignored as unlikely to be a real UTR. Moreover, if the start of a gene is the closest upstream sequence before any UTR or CDS the newly defined UTR is ignored to avoid assignment problems. In order to later differentiate between regions that are 3' or 5' UTRs, regions that are downstream of the last CDS of a given transcript were labeled as 3' UTR. The label `non-coding' is assigned to all bins that have no protein coding transcript overlapping it.
 
 If a bin originates from regions belonging to different genes, the bin is duplicated and assigned once to each gene, so that each gene contains the same fragment once. Alternatively, the \texttt{genewise} argument can be used so that only exons belonging to the same gene are considered when flattening.
 
@@ -377,7 +373,7 @@ Three wrappers implement corresponding DEU methods on the \linebreak \texttt{Ran
 This is a wrapper around \textit{edgeR}'s DEU method based on fitting a negative binomial generalized linear model \cite{Robinson2009EdgeR:Data}. In a first step the bins are filtered to decide which have a large enough read count to be kept for the statistical analysis (\texttt{filterByExpr()}), the library sizes are normalized (\texttt{calcNormFactors()}) and the dispersion is estimated (\texttt{estimateDisp()}). After this the model is fitted (\texttt{glmFit()}). If the option \texttt{QLF = TRUE} (default), an extended model is fitted, using quasi-likelihood methods to account for gene specific variability (\texttt{glmQLFit()}). In the last step bin fold changes are tested to be different from overall gene fold changes, using a likelihood ratio test or a quasi-likelihood F-Test depending on the \texttt{QLF} option chosen (\texttt{diffSpliceDGE()}).  The gene level p-values are obtained by the Simes' method \cite{Simes1986AnSignificance}. 
 \paragraph{DEXseq.wrapper()}
 
-In this method the standard \textit{DEXseq} differential exon usage pipeline \cite{Anders2012DetectingData} is implemented. It is similarly to edgeR based on fitting a negative binomial model but instead of comparing fold change differences between bins and genes, \textit{DEXseq} compares a full model containing a term corresponding to the change in exon usage between conditions to a reduced model without this term. The two fits are compared using a $\chi^2$ likelihood-ratio test. The libraries are normalized (\texttt{estimateSizeFactor()}), the dispersion is estimated (\texttt{estimateDispersion()} and the models are fitted (\texttt{testForDEU()}). In a last step the fold changes between the bins are estimated ( \texttt{estimateExonFoldChanges()}). To obtain gene level results the function \texttt{perGeneQValue()} is used, which is based on the Šidák method \cite{Sidak1967RectangularDistributions}.
+In this method the standard \textit{DEXseq} differential exon usage pipeline \cite{Anders2012DetectingData} is implemented. It is similarly to \textit{edgeR} based on fitting a negative binomial model but instead of comparing fold change differences between bins and genes, \textit{DEXseq} compares a full model containing a term corresponding to the change in exon usage between conditions to a reduced model without this term. The two fits are compared using a $\chi^2$ likelihood-ratio test. The libraries are normalized (\texttt{estimateSizeFactor()}), the dispersion is estimated (\texttt{estimateDispersion()} and the models are fitted (\texttt{testForDEU()}). In a last step the fold changes between the bins are estimated ( \texttt{estimateExonFoldChanges()}). To obtain gene level results the function \texttt{perGeneQValue()} is used, which is based on the Šidák method \cite{Sidak1967RectangularDistributions}.
 
 \paragraph{diffSplice.wrapper() and diffSplice2}
 \label{sec:diffSplice2}
@@ -431,14 +427,49 @@ We used the following software versions for comparisons: \textit{Polyester} 1.24
 
 \begin{backmatter}
 
+\section*{Abbreviations}
+
+\begin{description}
+
+\item[APA] Alternative poly-adenylation
+\item[CDS] Coding sequence
+\item[CPM] Counts per million (of reads sequenced)
+\item[DEU] Differential exon usage
+\item[ESC] Embryonic stem cells
+\item[FDR] False discovery rate
+\item[LTP] Long-term potentiation
+\item[MDS] Multidimensional scaling
+\item[PAU] Poly(A) Usage
+\item[PCA] Principcal Component Analysis
+\item[polyA] Poly-adenylation
+\item[QLF] Quais-likelihood F-Test
+\item[ROC] Receiver-operator characteristic
+\item[UTR] Untranslated region
+
+\end{description}
+
+\section*{Ethics approval and consent to participate}
+
+Not applicable.
+
+\section*{Consent for publication}
+
+Not applicable.
+
+\section*{Availability of data and material}
+The data objects and code used to produce the figures are available through the \url{https://github.com/plger/diffUTR_paper} repository. The \textit{diffUTR} source code is available at \url{https://github.com/ETHZ-INS/diffUTR}.
+
 \section*{Competing interests}
   The authors declare no competing interests beside being the developers of the described package.
+
+\section*{Funding}
+GS is supported by grants from the SNF (SNF\_179651, SNF\_189486) and the ETH (ETH-24 18-2 (NeuroSno)).
 
 \section*{Author's contributions}
   SG developed the bin preparation and the \textit{diffSplice} modification, and ran most of the analyses. PLG and SG wrote the package and paper. PLG and GS supervised the project.
 
 \section*{Acknowledgements}
-  SG performed this research as part of his bachelor thesis in the Interdisciplinary Sciences program at ETH. PLG's position is co-funded by Prof. Mark Robinson (Institute of Molecular Life Sciences, University of Zurich) and Professors Gerhard Schratt, Johannes Bohacek and Isabelle Mansuy (Institute of Neuroscience, ETH Zurich). GS is supported by grants from the SNF (SNF\_179651, SNF\_189486) and the ETH (ETH-24 18-2 (NeuroSno)). We thank the Robinson group (UZH) for feedback.
+  SG performed this research as part of his bachelor thesis in the Interdisciplinary Sciences program at ETH. PLG's position is co-funded by Prof. Mark Robinson (Institute of Molecular Life Sciences, University of Zurich) and Professors Gerhard Schratt, Johannes Bohacek and Isabelle Mansuy (Institute of Neuroscience, ETH Zurich). We thank the Robinson group (UZH) for feedback.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%                  The Bibliography                       %%
@@ -483,40 +514,6 @@ We used the following software versions for comparisons: \textit{Polyester} 1.24
 %%
 %% Do not use \listoffigures as most will included as separate files
 
-\iffalse
-
-\section*{Figures}
-  \begin{figure}[h!]
-  \caption{\csentence{Sample figure title.}
-      A short description of the figure content
-      should go here.}
-      \end{figure}
-
-\begin{figure}[h!]
-  \caption{\csentence{Sample figure title.}
-      Figure legend text.}
-      \end{figure}
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%                               %%
-%% Tables                        %%
-%%                               %%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-%% Use of \listoftables is discouraged.
-%%
-\section*{Tables}
-\begin{table}[h!]
-\caption{Sample table title. This is where the description of the table should go.}
-      \begin{tabular}{cccc}
-        \hline
-           & B1  &B2   & B3\\ \hline
-        A1 & 0.1 & 0.2 & 0.3\\
-        A2 & ... & ..  & .\\
-        A3 & ..  & .   & .\\ \hline
-      \end{tabular}
-\end{table}
-\fi
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%                               %%
 %% Additional Files              %%
