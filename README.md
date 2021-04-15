@@ -1,6 +1,6 @@
 # Streamlining differential exon and 3' UTR analysis
 
-This repository accompanies the [diffUTR paper](https://doi.org/10.1101/2021.02.12.430963), providing a record of what was done and of the data used. For information about the diffUTR package and its usage, see the [package's repository](https://github.com/ETHZ-INS/diffUTR).
+This repository accompanies the [diffUTR paper](https://doi.org/10.1186/s12859-021-04114-7), providing a record of what was done and of the data used. For information about the diffUTR package and its usage, see the [package's repository](https://github.com/ETHZ-INS/diffUTR).
 
 ## Structure
 
